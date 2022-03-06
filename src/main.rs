@@ -1,23 +1,16 @@
-extern crate midir;
+mod context;
+mod midi;
+mod operators;
 
-use std::borrow::BorrowMut;
-use std::collections::HashMap;
-use std::error::Error;
-use std::io::{stdin, stdout, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-
-use midir::{MidiOutput, MidiOutputPort};
-use pancurses::{A_BLINK, A_BOLD, ALL_MOUSE_EVENTS, cbreak, curs_set, endwin, getmouse, initscr, Input, keyname, mousemask, noecho, resize_term};
-
-use crate::operators::{Context, grid_tick};
-use crate::midi::{MidiNote, notes_tick};
-
-mod operators;
-mod midi;
-mod context;
+use midir::MidiOutput;
+use pancurses::{ALL_MOUSE_EVENTS, cbreak, curs_set, getmouse, initscr, Input, mousemask, noecho, resize_term};
+use crate::context::Context;
+use crate::midi::notes_tick;
+use crate::operators::grid_tick;
 
 fn main() {
     let rows = 30;

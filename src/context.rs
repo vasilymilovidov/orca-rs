@@ -1,4 +1,4 @@
-use crate::MidiNote;
+use crate::midi::MidiNote;
 
 pub struct Context {
     pub grid: Vec<Vec<char>>,

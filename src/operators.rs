@@ -1,10 +1,7 @@
 use std::collections::HashMap;
-use std::thread::sleep;
-use std::time::{Duration, Instant};
-use midir::MidiOutputConnection;
 use rand::Rng;
 use crate::context::Context;
-use crate::MidiNote;
+use crate::midi::MidiNote;
 
 pub fn char_to_base_36(c: char) -> Option<(u8, bool)> {
     if c >= '0' && c <= '9' {
