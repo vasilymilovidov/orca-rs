@@ -16,7 +16,7 @@ fn main() {
     let rows = 30;
     let cols = 100;
     let grid: Vec<Vec<char>> = (0..rows).map(|_| (0..cols).map(|_| '.').collect()).collect();
-    let mut context = Context::new(grid, 120, 4);
+    let context = Context::new(grid, 120, 4);
 
     let context_arc = Arc::new(Mutex::new(context));
     let midi_context_arc = Arc::clone(&context_arc);
@@ -27,13 +27,14 @@ fn main() {
         let midi_out = MidiOutput::new("rust-orca").unwrap();
         let out_ports = midi_out.ports();
         let out_port = out_ports.get(2).unwrap();
-        let mut conn = &mut midi_out.connect(out_port, "rust-orca-conn").unwrap();
+        let conn = &mut midi_out.connect(out_port, "rust-orca-conn").unwrap();
 
         // clear all existing midi notes
         // TODO clear existing midi notes when program is closed as well
         for channel in 0..16 {
             for note in 0..128 {
-                conn.send(&[0x80 + channel, note, 0]);
+                let note_off_message = 0x80 + channel;
+                conn.send(&[note_off_message, note, 0]).unwrap();
             }
         }
 

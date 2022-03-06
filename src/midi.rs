@@ -36,23 +36,35 @@ impl MidiNote {
         MidiNote { channel, note_number, velocity, duration, started: false }
     }
 
+    #[allow(dead_code)]
     pub fn play(&self, conn: &mut MidiOutputConnection) {
         let note_on_message: u8 = 0x90 + self.channel;
         let note_off_message: u8 = 0x80 + self.channel;
-        conn.send(&[note_on_message, self.note_number, self.velocity]);
+        match conn.send(&[note_on_message, self.note_number, self.velocity]) {
+            Ok(_) => {}
+            Err(err) => { println!("Midi note on send error: {}", err); }
+        };
         sleep(Duration::from_millis(self.duration));
-        conn.send(&[note_off_message, self.note_number, self.velocity]);
+        match conn.send(&[note_off_message, self.note_number, self.velocity]) {
+            Ok(_) => {}
+            Err(err) => { println!("Midi note off send error: {}", err); }
+        };
     }
 
     pub fn start(&mut self, conn: &mut MidiOutputConnection) {
         let note_on_message: u8 = 0x90 + self.channel;
-        conn.send(&[note_on_message, self.note_number, self.velocity]);
-        self.started = true;
+        match conn.send(&[note_on_message, self.note_number, self.velocity]) {
+            Ok(_) => { self.started = true; }
+            Err(err) => { println!("Midi note on send error: {}", err); }
+        };
     }
 
     pub fn stop(&self, conn: &mut MidiOutputConnection) {
         let note_off_message: u8 = 0x80 + self.channel;
-        conn.send(&[note_off_message, self.note_number, self.velocity]);
+        match conn.send(&[note_off_message, self.note_number, self.velocity]) {
+            Ok(_) => {}
+            Err(err) => { println!("Midi note off send error: {}", err); }
+        }
     }
 }
 

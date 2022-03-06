@@ -21,6 +21,7 @@ impl Context {
         }
     }
 
+    #[allow(dead_code)]
     pub fn display(&self) {
         let rows = self.grid.len();
         let cols = self.grid[0].len();
