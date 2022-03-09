@@ -107,6 +107,7 @@ pub fn get_tick_operators() -> HashMap<char, Operator> {
         Operator::new("Write", 'X', write),
         Operator::new("Jymp", 'Y', jymp),
         Operator::new("Interpolate", 'Z', interpolate),
+        Operator::new("Comment", '#', comment)
     ].iter().cloned().map(|operator| (operator.symbol, operator)).collect()
 }
 
@@ -550,6 +551,21 @@ fn euclid(context: &Context, row: i32, col: i32) -> Vec<Update> {
     vec![
         Update::Inputs(vec![step_port, max_port]),
         Update::Outputs(vec![out_port]),
+    ]
+}
+
+fn comment(context: &Context, row: i32, col: i32) -> Vec<Update> {
+    let width = context.width as i32;
+    let mut c = col + 1;
+    for i in c..width {
+        c = i;
+        if context.read(row, c) == '#' {
+            break;
+        }
+    }
+    let locks = (col..(c + 1)).map(|l| Port::new("locked", row, l, '.')).collect();
+    vec![
+        Update::Locks(locks)
     ]
 }
 

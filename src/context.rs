@@ -20,6 +20,8 @@ impl Port {
 
 pub struct Context {
     pub grid: Vec<Vec<char>>,
+    pub width: usize,
+    pub height: usize,
     pub notes: Vec<MidiNote>,
     pub locks: HashSet<(i32, i32)>,
     pub ticks: usize,
@@ -30,8 +32,12 @@ pub struct Context {
 
 impl Context {
     pub fn new(grid: Vec<Vec<char>>, tempo: u64, divisions: u64) -> Context {
+        let width = grid[0].len();
+        let height = grid.len();
         Context {
             grid,
+            width,
+            height,
             notes: Vec::new(),
             locks: HashSet::new(),
             ticks: 0,
@@ -56,7 +62,7 @@ impl Context {
     pub fn read(&self, row: i32, col: i32) -> char {
         let row = row as usize;
         let col = col as usize;
-        if 0 <= row && row < self.grid.len() && 0 <= col && col < self.grid[0].len() {
+        if 0 <= row && row < self.height && 0 <= col && col < self.width {
             self.grid[row][col]
         } else {
             '.'
@@ -72,7 +78,7 @@ impl Context {
     pub fn write(&mut self, row: i32, col: i32, chr: char) {
         let row = row as usize;
         let col = col as usize;
-        if 0 <= row && row < self.grid.len() && 0 <= col && col < self.grid[0].len() {
+        if 0 <= row && row < self.height && 0 <= col && col < self.width {
             self.grid[row][col] = chr;
         }
     }
