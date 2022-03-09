@@ -58,7 +58,6 @@ impl Operator {
             for update in updates {
                 match update {
                     Update::Inputs(ports) => {
-                        // TODO this might be too strict?
                         for port in ports {
                             context.lock(port.row, port.col);
                         }
@@ -119,6 +118,8 @@ pub fn get_tick_operators() -> HashMap<char, Operator> {
         Operator::new("Jymp", 'Y', jymp),
         Operator::new("Interpolate", 'Z', interpolate),
         Operator::new("Comment", '#', comment),
+        // the midi operator is technically operated each tick, but only produces a note on a bang
+        Operator::new("Midi", ':', midi_note),
     ].iter().cloned().map(|operator| (operator.symbol, operator)).collect()
 }
 
@@ -206,7 +207,11 @@ fn midi_note(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let (velocity, _) = char_to_base_36(velocity_port.value);
     let (duration, _) = char_to_base_36(duration_port.value);
 
-    let midi_notes = if note >= 10 {
+    let midi_notes = if note >= 10 && (
+        context.read(row - 1, col) == '*'
+            || context.read(row, col - 1) == '*'
+            || context.read(row + 1, col) == '*'
+    ) {
         vec![MidiNote::from_base_36(
             channel, octave, note, !note_upper,
             velocity, duration, context.tick_time,
@@ -251,10 +256,14 @@ fn track(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let out = val_port.value;
 
     let out_port = Port::new("out", row + 1, col, out);
+    let locks = (0..(len as i32)).map(
+        |i| Port::new("locked", row, col + 1 + i, '.')
+    ).collect();
 
     vec![
         Update::Inputs(vec![key_port, len_port, val_port]),
         Update::Outputs(vec![out_port]),
+        Update::Locks(locks)
     ]
 }
 
@@ -459,10 +468,14 @@ fn push(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let out = val_port.value;
 
     let out_port = Port::new("out", row + 1, col + (key % len) as i32, out);
+    let locks = (0..(len as i32)).map(
+        |i| Port::new("locked", row + 1, col + i, '.')
+    ).collect();
 
     vec![
         Update::Inputs(vec![key_port, len_port, val_port]),
         Update::Outputs(vec![out_port]),
+        Update::Locks(locks)
     ]
 }
 
@@ -613,7 +626,7 @@ fn concat(context: &Context, row: i32, col: i32) -> Vec<Update> {
     vec![
         Update::Inputs(vec![len_port]),
         Update::Outputs(output_ports),
-        Update::Locks(locks)
+        Update::Locks(locks),
     ]
 }
 
@@ -622,7 +635,6 @@ pub fn get_bang_operators() -> HashMap<char, Operator> {
     for (c, operator) in get_tick_operators() {
         operators.insert(c.to_ascii_lowercase(), operator);
     }
-    operators.insert(':', Operator::new("Midi", ':', midi_note));
     operators
 }
 
@@ -631,16 +643,16 @@ pub fn grid_tick(
     tick_operators: &HashMap<char, Operator>,
     bang_operators: &HashMap<char, Operator>,
 ) {
-    let rows = context.grid.len();
-    let cols = context.grid[0].len();
+    let rows = context.height as i32;
+    let cols = context.width as i32;
     context.unlock_all();
     context.clear_all_variables();
 
     // clear previous bangs
     for row in 0..rows {
         for col in 0..cols {
-            if context.grid[row][col] == '*' {
-                context.grid[row][col] = '.';
+            if context.read(row, col) == '*' {
+                context.write(row, col, '.');
             }
         }
     }
@@ -648,8 +660,8 @@ pub fn grid_tick(
     // apply grid operators (which may produce new bangs)
     for row in 0..rows {
         for col in 0..cols {
-            if let Some(operator) = tick_operators.get(&context.grid[row][col]) {
-                operator.apply(context, row as i32, col as i32);
+            if let Some(operator) = tick_operators.get(&context.read(row, col)) {
+                operator.apply(context, row, col);
             }
         }
     }
@@ -657,11 +669,11 @@ pub fn grid_tick(
     // apply bang operators on current bangs
     for row in 0..rows {
         for col in 0..cols {
-            if let Some(operator) = bang_operators.get(&context.grid[row][col]) {
-                if context.grid[row - 1][col] == '*'
-                    || context.grid[row][col - 1] == '*'
-                    || context.grid[row + 1][col] == '*' {
-                    operator.apply(context, row as i32, col as i32);
+            if let Some(operator) = bang_operators.get(&context.read(row, col)) {
+                if context.read(row - 1, col) == '*'
+                    || context.read(row, col - 1) == '*'
+                    || context.read(row + 1, col) == '*' {
+                    operator.apply(context, row, col);
                 }
             }
         }
