@@ -88,8 +88,8 @@ fn main() {
         };
         window.mv(0, 0);
         for row in grid.iter() {
-            for chr in row.iter() {
-                window.addch(*chr);
+            for value in row.iter() {
+                window.addch(*value);
             }
         }
         window.mv(row as i32, col as i32);

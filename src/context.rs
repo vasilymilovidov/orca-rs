@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use crate::midi::MidiNote;
 
 
@@ -24,6 +24,7 @@ pub struct Context {
     pub height: usize,
     pub notes: Vec<MidiNote>,
     pub locks: HashSet<(i32, i32)>,
+    pub variables: HashMap<char, char>,
     pub ticks: usize,
     pub tempo: u64,
     pub divisions: u64,
@@ -40,6 +41,7 @@ impl Context {
             height,
             notes: Vec::new(),
             locks: HashSet::new(),
+            variables: HashMap::new(),
             ticks: 0,
             tempo,
             divisions,
@@ -75,16 +77,28 @@ impl Context {
         Port::new(name, row, col, value)
     }
 
-    pub fn write(&mut self, row: i32, col: i32, chr: char) {
+    pub fn write(&mut self, row: i32, col: i32, value: char) {
         let row = row as usize;
         let col = col as usize;
         if 0 <= row && row < self.height && 0 <= col && col < self.width {
-            self.grid[row][col] = chr;
+            self.grid[row][col] = value;
         }
     }
 
     pub fn write_note(&mut self, note: MidiNote) {
         self.notes.push(note);
+    }
+
+    pub fn set_variable(&mut self, name: char, value: char) {
+        self.variables.insert(name, value);
+    }
+
+    pub fn read_variable(&self, name: char) -> char {
+        *self.variables.get(&name).unwrap_or(&'.')
+    }
+
+    pub fn clear_all_variables(&mut self) {
+        self.variables = HashMap::new();
     }
 
     pub fn lock(&mut self, row: i32, col: i32) {

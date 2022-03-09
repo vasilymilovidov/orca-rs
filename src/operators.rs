@@ -5,6 +5,7 @@ use rand::Rng;
 
 use crate::context::{Context, Port};
 use crate::midi::MidiNote;
+use crate::operators::Update::Variables;
 
 pub fn char_to_base_36(c: char) -> (u8, bool) {
     if c >= '0' && c <= '9' {
@@ -35,6 +36,7 @@ enum Update {
     Outputs(Vec<Port>),
     Locks(Vec<Port>),
     Notes(Vec<MidiNote>),
+    Variables(Vec<(char, char)>),
 }
 
 #[derive(Clone)]
@@ -56,11 +58,15 @@ impl Operator {
             for update in updates {
                 match update {
                     Update::Inputs(ports) => {
-                        println!("input ports for {}: {:?}", self.name, ports);
+                        // TODO this might be too strict?
+                        for port in ports {
+                            context.lock(port.row, port.col);
+                        }
                     }
                     Update::Outputs(ports) => {
                         for port in ports {
                             context.write(port.row, port.col, port.value);
+                            context.lock(port.row, port.col);
                         }
                     }
                     Update::Locks(ports) => {
@@ -71,6 +77,11 @@ impl Operator {
                     Update::Notes(notes) => {
                         for note in notes {
                             context.write_note(note);
+                        }
+                    }
+                    Update::Variables(variables) => {
+                        for (name, value) in variables {
+                            context.set_variable(name, value);
                         }
                     }
                 }
@@ -91,7 +102,7 @@ pub fn get_tick_operators() -> HashMap<char, Operator> {
         Operator::new("Halt", 'H', halt),
         Operator::new("Increment", 'I', increment),
         Operator::new("Jump", 'J', jump),
-        // Operator::new("Concat", 'K', concat),
+        Operator::new("Concat", 'K', concat),
         Operator::new("Lesser", 'L', lesser),
         Operator::new("Multiply", 'M', multiply),
         Operator::new("North", 'N', north),
@@ -102,12 +113,12 @@ pub fn get_tick_operators() -> HashMap<char, Operator> {
         Operator::new("South", 'S', south),
         Operator::new("Track", 'T', track),
         Operator::new("Euclid", 'U', euclid),
-        // Operator::new("Variable", 'V', variable),
+        Operator::new("Variable", 'V', variable),
         Operator::new("West", 'W', west),
         Operator::new("Write", 'X', write),
         Operator::new("Jymp", 'Y', jymp),
         Operator::new("Interpolate", 'Z', interpolate),
-        Operator::new("Comment", '#', comment)
+        Operator::new("Comment", '#', comment),
     ].iter().cloned().map(|operator| (operator.symbol, operator)).collect()
 }
 
@@ -264,7 +275,7 @@ fn east(context: &Context, row: i32, col: i32) -> Vec<Update> {
         input_port.value = '.';
         vec![
             Update::Outputs(vec![input_port, output_port.clone()]),
-            Update::Locks(vec![output_port])
+            Update::Locks(vec![output_port]),
         ]
     } else {
         input_port.value = '*';
@@ -282,7 +293,7 @@ fn west(context: &Context, row: i32, col: i32) -> Vec<Update> {
         input_port.value = '.';
         vec![
             Update::Outputs(vec![input_port, output_port.clone()]),
-            Update::Locks(vec![output_port])
+            Update::Locks(vec![output_port]),
         ]
     } else {
         input_port.value = '*';
@@ -300,7 +311,7 @@ fn north(context: &Context, row: i32, col: i32) -> Vec<Update> {
         input_port.value = '.';
         vec![
             Update::Outputs(vec![input_port, output_port.clone()]),
-            Update::Locks(vec![output_port])
+            Update::Locks(vec![output_port]),
         ]
     } else {
         input_port.value = '*';
@@ -318,7 +329,7 @@ fn south(context: &Context, row: i32, col: i32) -> Vec<Update> {
         input_port.value = '.';
         vec![
             Update::Outputs(vec![input_port, output_port.clone()]),
-            Update::Locks(vec![output_port])
+            Update::Locks(vec![output_port]),
         ]
     } else {
         input_port.value = '*';
@@ -569,6 +580,43 @@ fn comment(context: &Context, row: i32, col: i32) -> Vec<Update> {
     ]
 }
 
+fn variable(context: &Context, row: i32, col: i32) -> Vec<Update> {
+    let write_port = context.listen("write", row, col - 1, '.');
+    let read_port = context.listen("read", row, col + 1, '.');
+
+    if write_port.value == '.' {
+        let out_port = Port::new("out", row + 1, col, context.read_variable(read_port.value));
+        vec![
+            Update::Inputs(vec![write_port, read_port]),
+            Update::Outputs(vec![out_port]),
+        ]
+    } else {
+        let value = read_port.value;
+        vec![
+            Update::Inputs(vec![read_port]),
+            Update::Variables(vec![(write_port.value, value)]),
+        ]
+    }
+}
+
+fn concat(context: &Context, row: i32, col: i32) -> Vec<Update> {
+    let len_port = context.listen("len", row, col - 1, '1');
+
+    let (len, _) = char_to_base_36(len_port.value);
+    let output_ports = (0..(len as i32)).map(
+        |i| Port::new(&format!("out-{}", i), row + 1, col + i + 1,
+                      context.read_variable(context.read(row, col + i + 1)))
+    ).collect();
+    let locks = (0..(len as i32)).map(
+        |i| Port::new("locked", row, col + 1 + i, '.')
+    ).collect();
+    vec![
+        Update::Inputs(vec![len_port]),
+        Update::Outputs(output_ports),
+        Update::Locks(locks)
+    ]
+}
+
 pub fn get_bang_operators() -> HashMap<char, Operator> {
     let mut operators: HashMap<char, Operator> = HashMap::new();
     for (c, operator) in get_tick_operators() {
@@ -586,6 +634,7 @@ pub fn grid_tick(
     let rows = context.grid.len();
     let cols = context.grid[0].len();
     context.unlock_all();
+    context.clear_all_variables();
 
     // clear previous bangs
     for row in 0..rows {
