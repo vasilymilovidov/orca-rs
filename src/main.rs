@@ -10,7 +10,7 @@ use midir::MidiOutput;
 use pancurses::{ALL_MOUSE_EVENTS, cbreak, curs_set, getmouse, initscr, Input, mousemask, noecho, resize_term};
 use crate::context::Context;
 use crate::midi::notes_tick;
-use crate::operators::grid_tick;
+use crate::operators::{get_bang_operators, get_tick_operators, grid_tick};
 
 fn main() {
     let rows = 30;

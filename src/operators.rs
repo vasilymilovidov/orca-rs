@@ -1,17 +1,20 @@
 use std::collections::HashMap;
+use std::hash::Hash;
+
 use rand::Rng;
-use crate::context::Context;
+
+use crate::context::{Context, Port};
 use crate::midi::MidiNote;
 
-pub fn char_to_base_36(c: char) -> Option<(u8, bool)> {
+pub fn char_to_base_36(c: char) -> (u8, bool) {
     if c >= '0' && c <= '9' {
-        Some((c as u8 - '0' as u8, false))
+        (c as u8 - '0' as u8, false)
     } else if c >= 'a' && c <= 'z' {
-        Some((c as u8 + 10 - 'a' as u8, false))
+        (c as u8 + 10 - 'a' as u8, false)
     } else if c >= 'A' && c <= 'Z' {
-        Some((c as u8 + 10 - 'A' as u8, true))
+        (c as u8 + 10 - 'A' as u8, true)
     } else {
-        None
+        (0, false)
     }
 }
 
@@ -27,301 +30,480 @@ pub fn base_36_to_char(c: u8, upper: bool) -> char {
     c as char
 }
 
+struct OperatorResult {
+    input_ports: Vec<Port>,
+    output_ports: Vec<Port>,
+    midi_notes: Vec<MidiNote>,
+}
 
-pub fn add(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((a, a_upper)), Some((b, b_upper))) = (
-        char_to_base_36(grid[row][col - 1]),
-        char_to_base_36(grid[row][col + 1])
-    ) {
-        context.grid[row + 1][col] = base_36_to_char(a + b, a_upper || b_upper);
-    }
+#[derive(Clone)]
+pub struct Operator {
+    name: String,
+    symbol: char,
+    evaluate: fn(context: &Context, row: i32, col: i32) -> OperatorResult,
 }
 
 
-pub fn sub(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((a, a_upper)), Some((b, b_upper))) = (
-        char_to_base_36(grid[row][col - 1]),
-        char_to_base_36(grid[row][col + 1])
-    ) {
-        let diff = if a > b { a - b } else { b - a };
-        context.grid[row + 1][col] = base_36_to_char(diff, a_upper || b_upper);
+impl Operator {
+    fn new(name: &str, symbol: char, evaluate: fn(&Context, i32, i32) -> OperatorResult) -> Operator {
+        Operator { name: String::from(name), symbol, evaluate }
     }
-}
 
-pub fn delay(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((rate, _)), Some((delay_mod, _))) = (
-        char_to_base_36(grid[row][col - 1]),
-        char_to_base_36(grid[row][col + 1])
-    ) {
-        if context.ticks % (rate as usize * delay_mod as usize) == 0 {
-            context.grid[row + 1][col] = '*';
+    fn apply(&self, context: &mut Context, row: i32, col: i32) {
+        let update = (self.evaluate)(context, row, col);
+        for port in update.output_ports {
+            context.write(port.row, port.col, port.value);
+        }
+        for note in update.midi_notes {
+            context.write_note(note);
         }
     }
 }
 
-pub fn random(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((min, min_upper)), Some((max, max_upper))) = (
-        char_to_base_36(grid[row][col - 1]),
-        char_to_base_36(grid[row][col + 1])
-    ) {
-        let mut rng = rand::thread_rng();
-        let r = rng.gen_range(min..max);
-        let c = base_36_to_char(r, min_upper || max_upper);
-        context.grid[row + 1][col] = c;
+pub fn get_tick_operators() -> HashMap<char, Operator> {
+    vec![
+        Operator::new("Add", 'A', add),
+        Operator::new("Sub", 'B', sub),
+        Operator::new("Clock", 'C', clock),
+        Operator::new("Delay", 'D', delay),
+        // Operator::new("East", 'E', east),
+        Operator::new("If", 'F', condition),
+        Operator::new("Generate", 'G', generate),
+        // Operator::new("Halt", 'H', halt),
+        Operator::new("Increment", 'I', increment),
+        Operator::new("Jump", 'J', jump),
+        // Operator::new("Concat", 'K', concat),
+        Operator::new("Lesser", 'L', lesser),
+        Operator::new("Multiply", 'M', multiply),
+        // Operator::new("North", 'N', north),
+        Operator::new("Read", 'O', read),
+        Operator::new("Push", 'P', push),
+        Operator::new("Query", 'Q', query),
+        Operator::new("Random", 'R', random),
+        // Operator::new("South", 'S', south),
+        Operator::new("Track", 'T', track),
+        Operator::new("Euclid", 'U', euclid),
+        // Operator::new("Variable", 'V', variable),
+        // Operator::new("West", 'W', west),
+        Operator::new("Write", 'X', write),
+        Operator::new("Jymp", 'Y', jymp),
+        Operator::new("Interpolate", 'Z', interpolate),
+    ].iter().cloned().map(|operator| (operator.symbol, operator)).collect()
+}
+
+fn add(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let a_port = context.listen("a", row, col - 1, '0');
+    let b_port = context.listen("b", row, col + 1, '0');
+
+    let (a, a_upper) = char_to_base_36(a_port.value);
+    let (b, b_upper) = char_to_base_36(b_port.value);
+    let out = base_36_to_char(a + b, a_upper || b_upper);
+
+    let out_port = Port::new("out", row + 1, col, out);
+
+    OperatorResult {
+        input_ports: vec![a_port, b_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn midi_note(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if grid[row - 1][col] == '*' || grid[row][col - 1] == '*' || grid[row + 1][col] == '*' {
-        if let (
-            Some((channel, _)),
-            Some((octave, _)),
-            Some((note, upper)),
-            Some((velocity, _)),
-            Some((duration, _))
-        ) = (
-            char_to_base_36(grid[row][col + 1]),
-            char_to_base_36(grid[row][col + 2]),
-            char_to_base_36(grid[row][col + 3]),
-            char_to_base_36(grid[row][col + 4]),
-            char_to_base_36(grid[row][col + 5]),
-        ) {
-            if note >= 10 {
-                let midi_note = MidiNote::from_base_36(
-                    channel, octave, note, !upper, velocity, duration,
-                    context.tick_time,
-                );
-                context.notes.push(midi_note);
-            }
-        }
+fn sub(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let a_port = context.listen("a", row, col - 1, '0');
+    let b_port = context.listen("b", row, col + 1, '0');
+
+    let (a, a_upper) = char_to_base_36(a_port.value);
+    let (b, b_upper) = char_to_base_36(b_port.value);
+    let diff = if a > b { a - b } else { b - a };
+    let out = base_36_to_char(diff, a_upper || b_upper);
+
+    let out_port = Port::new("out", row + 1, col, out);
+
+    OperatorResult {
+        input_ports: vec![a_port, b_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn clock(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((rate, _)), Some((clock_mod, mod_upper))) = (
-        char_to_base_36(grid[row][col - 1]),
-        char_to_base_36(grid[row][col + 1])
-    ) {
-        let value = context.ticks / rate as usize % clock_mod as usize;
-        context.grid[row + 1][col] = base_36_to_char(value as u8, mod_upper);
+fn delay(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let rate_port = context.listen("rate", row, col - 1, '1');
+    let mod_port = context.listen("mod", row, col + 1, '8');
+
+    let (rate, _) = char_to_base_36(rate_port.value);
+    let (delay_mod, _) = char_to_base_36(mod_port.value);
+    let delay_mod = delay_mod.max(1);
+
+    let mut out_port = context.listen("out", row + 1, col, '.');
+    if context.ticks % (rate as usize * delay_mod as usize) == 0 {
+        out_port.value = '*';
+    }
+
+    OperatorResult {
+        input_ports: vec![rate_port, mod_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn track(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((key, _)), Some((len, _))) = (
-        char_to_base_36(grid[row][col - 2]),
-        char_to_base_36(grid[row][col - 1])
-    ) {
-        context.grid[row + 1][col] = grid[row][col + 1 + (key % len) as usize];
+fn random(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let min_port = context.listen("min", row, col - 1, '0');
+    let max_port = context.listen("max", row, col + 1, 'z');
+
+    let (min, min_upper) = char_to_base_36(min_port.value);
+    let (max, max_upper) = char_to_base_36(max_port.value);
+
+    let mut rng = rand::thread_rng();
+    let r = rng.gen_range(min..max);
+    let out = base_36_to_char(r, min_upper || max_upper);
+
+    let out_port = Port::new("out", row + 1, col, out);
+
+    OperatorResult {
+        input_ports: vec![min_port, max_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn east(context: &mut Context, row: usize, col: usize) {
-    context.grid[row][col + 1] = context.grid[row][col];
-    context.grid[row][col] = '.';
-}
+fn midi_note(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let channel_port = context.listen("channel", row, col + 1, '0');
+    let octave_port = context.listen("octave", row, col + 2, '0');
+    let note_port = context.listen("note", row, col + 3, '0');
+    let velocity_port = context.listen("velocity", row, col + 4, 'f');
+    let duration_port = context.listen("duration", row, col + 5, '1');
 
-pub fn west(context: &mut Context, row: usize, col: usize) {
-    context.grid[row][col - 1] = context.grid[row][col];
-    context.grid[row][col] = '.';
-}
+    let (channel, _) = char_to_base_36(channel_port.value);
+    let (octave, _) = char_to_base_36(octave_port.value);
+    let (note, note_upper) = char_to_base_36(note_port.value);
+    let (velocity, _) = char_to_base_36(velocity_port.value);
+    let (duration, _) = char_to_base_36(duration_port.value);
 
-pub fn north(context: &mut Context, row: usize, col: usize) {
-    context.grid[row - 1][col] = context.grid[row][col];
-    context.grid[row][col] = '.';
-}
-
-pub fn south(context: &mut Context, row: usize, col: usize) {
-    context.grid[row + 1][col] = context.grid[row][col];
-    context.grid[row][col] = '.';
-}
-
-pub fn condition(context: &mut Context, row: usize, col: usize) {
-    if context.grid[row][col - 1] == context.grid[row][col + 1] && context.grid[row][col - 1] != '.' {
-        context.grid[row + 1][col] = '*';
+    let midi_notes = if note >= 10 {
+        vec![MidiNote::from_base_36(
+            channel, octave, note, !note_upper,
+            velocity, duration, context.tick_time,
+        )]
     } else {
-        context.grid[row + 1][col] = '.';
+        vec![]
+    };
+
+    OperatorResult {
+        input_ports: vec![channel_port, octave_port, note_port, velocity_port, duration_port],
+        output_ports: vec![],
+        midi_notes,
     }
 }
 
-pub fn increment(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((step, _)), Some((increment_mod, mod_upper))) = (
-        char_to_base_36(grid[row][col - 1]),
-        char_to_base_36(grid[row][col + 1])
-    ) {
-        let value = if let Some((value, _)) = char_to_base_36(grid[row + 1][col]) {
-            (value + step) % increment_mod
-        } else {
-            0
-        };
-        context.grid[row + 1][col] = base_36_to_char(value, mod_upper);
+fn clock(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let rate_port = context.listen("rate", row, col - 1, '1');
+    let mod_port = context.listen("mod", row, col + 1, '8');
+
+    let (rate, _) = char_to_base_36(rate_port.value);
+    let (clock_mod, mod_upper) = char_to_base_36(mod_port.value);
+    let out = context.ticks / rate as usize % clock_mod as usize;
+    let out = base_36_to_char(out as u8, mod_upper);
+
+    let out_port = Port::new("out", row + 1, col, out);
+
+    OperatorResult {
+        input_ports: vec![rate_port, mod_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn jump(context: &mut Context, row: usize, col: usize) {
-    context.grid[row + 1][col] = context.grid[row - 1][col];
+fn track(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let key_port = context.listen("key", row, col - 2, '0');
+    let len_port = context.listen("len", row, col - 1, '1');
+
+    let (key, _) = char_to_base_36(key_port.value);
+    let (len, _) = char_to_base_36(len_port.value);
+    let len = len.max(1);
+    let val_port = context.listen("val", row, col + 1 + (key % len) as i32, '.');
+    let out = val_port.value;
+
+    let out_port = Port::new("out", row + 1, col, out);
+
+    OperatorResult {
+        input_ports: vec![key_port, len_port, val_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
+    }
 }
 
-pub fn jymp(context: &mut Context, row: usize, col: usize) {
-    context.grid[row][col + 1] = context.grid[row][col - 1];
+// pub fn east(context: &mut Context, row: usize, col: usize) {
+//     context.grid[row][col + 1] = context.grid[row][col];
+//     context.grid[row][col] = '.';
+// }
+//
+// pub fn west(context: &mut Context, row: usize, col: usize) {
+//     context.grid[row][col - 1] = context.grid[row][col];
+//     context.grid[row][col] = '.';
+// }
+//
+// pub fn north(context: &mut Context, row: usize, col: usize) {
+//     context.grid[row - 1][col] = context.grid[row][col];
+//     context.grid[row][col] = '.';
+// }
+//
+// pub fn south(context: &mut Context, row: usize, col: usize) {
+//     context.grid[row + 1][col] = context.grid[row][col];
+//     context.grid[row][col] = '.';
+// }
+
+fn condition(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let a_port = context.listen("a", row, col - 1, '.');
+    let b_port = context.listen("b", row, col + 1, '.');
+
+    let (a, _) = char_to_base_36(a_port.value);
+    let (b, _) = char_to_base_36(b_port.value);
+    let mut out_port = context.listen("out", row + 1, col, '.');
+    if a == b {
+        out_port.value = '*';
+    }
+
+    OperatorResult {
+        input_ports: vec![a_port, b_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
+    }
 }
 
-pub fn lesser(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((a, a_upper)), Some((b, b_upper))) = (
-        char_to_base_36(grid[row][col - 1]),
-        char_to_base_36(grid[row][col + 1])
-    ) {
+fn increment(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let step_port = context.listen("step", row, col - 1, '1');
+    let mod_port = context.listen("mod", row, col + 1, 'z');
+
+    let (step, _) = char_to_base_36(step_port.value);
+    let (increment_mod, mod_upper) = char_to_base_36(mod_port.value);
+    let increment_mod = increment_mod.max(1);
+    let mut out_port = context.listen("out", row + 1, col, '0');
+    let (out, _) = char_to_base_36(out_port.value);
+    let out = (out + step) % increment_mod;
+    out_port.value = base_36_to_char(out, mod_upper);
+
+    OperatorResult {
+        input_ports: vec![step_port, mod_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
+    }
+}
+
+fn jump(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let input_port = context.listen("input", row - 1, col, '.');
+    let output_port = Port::new("output", row + 1, col, input_port.value);
+
+    OperatorResult {
+        input_ports: vec![input_port],
+        output_ports: vec![output_port],
+        midi_notes: vec![],
+    }
+}
+
+fn jymp(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let input_port = context.listen("input", row, col - 1, '.');
+    let output_port = Port::new("output", row, col + 1, input_port.value);
+
+    OperatorResult {
+        input_ports: vec![input_port],
+        output_ports: vec![output_port],
+        midi_notes: vec![],
+    }
+}
+
+fn lesser(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let a_port = context.listen("a", row, col - 1, '.');
+    let b_port = context.listen("b", row, col + 1, '.');
+
+    let out = if a_port.value != '.' && b_port.value != '.' {
+        let (a, a_upper) = char_to_base_36(a_port.value);
+        let (b, b_upper) = char_to_base_36(b_port.value);
         let less = if a < b { a } else { b };
-        context.grid[row + 1][col] = base_36_to_char(less, a_upper || b_upper);
+        base_36_to_char(less, a_upper || b_upper)
+    } else {
+        '.'
+    };
+
+    let out_port = Port::new("out", row + 1, col, out);
+
+    OperatorResult {
+        input_ports: vec![a_port, b_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn multiply(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((a, a_upper)), Some((b, b_upper))) = (
-        char_to_base_36(grid[row][col - 1]),
-        char_to_base_36(grid[row][col + 1])
-    ) {
-        context.grid[row + 1][col] = base_36_to_char(a * b, a_upper || b_upper);
+fn multiply(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let a_port = context.listen("a", row, col - 1, '0');
+    let b_port = context.listen("b", row, col + 1, '0');
+
+    let (a, a_upper) = char_to_base_36(a_port.value);
+    let (b, b_upper) = char_to_base_36(b_port.value);
+    let out = base_36_to_char(a * b, a_upper || b_upper);
+
+    let out_port = Port::new("out", row + 1, col, out);
+
+    OperatorResult {
+        input_ports: vec![a_port, b_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn read(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((x, _)), Some((y, _))) = (
-        char_to_base_36(grid[row][col - 2]),
-        char_to_base_36(grid[row][col - 1])
-    ) {
-        context.grid[row + 1][col] = context.grid[row + y as usize][col + 1 + x as usize];
+fn read(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let x_port = context.listen("x", row, col - 2, '0');
+    let y_port = context.listen("y", row, col - 1, '0');
+
+    let (x, _) = char_to_base_36(x_port.value);
+    let (y, _) = char_to_base_36(y_port.value);
+    let val_port = context.listen("val", row + y as i32, col + 1 + x as i32, '.');
+    let out = val_port.value;
+
+    let out_port = Port::new("out", row + 1, col, out);
+
+    OperatorResult {
+        input_ports: vec![x_port, y_port, val_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn push(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((key, _)), Some((len, _))) = (
-        char_to_base_36(grid[row][col - 2]),
-        char_to_base_36(grid[row][col - 1])
-    ) {
-        context.grid[row + 1][col + (key % len) as usize] = grid[row][col + 1];
+fn push(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let key_port = context.listen("key", row, col - 2, '0');
+    let len_port = context.listen("len", row, col - 1, '1');
+
+    let (key, _) = char_to_base_36(key_port.value);
+    let (len, _) = char_to_base_36(len_port.value);
+    let len = len.max(1);
+    let val_port = context.listen("val", row, col + 1, '.');
+    let out = val_port.value;
+
+    let out_port = Port::new("out", row + 1, col + (key % len) as i32, out);
+
+    OperatorResult {
+        input_ports: vec![key_port, len_port, val_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn query(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((x, _)), Some((y, _)), Some((len, _))) = (
-        char_to_base_36(grid[row][col - 3]),
-        char_to_base_36(grid[row][col - 2]),
-        char_to_base_36(grid[row][col - 1])
-    ) {
-        for i in 0..len {
-            context.grid[row + 1][col - (len - i) as usize + 1] = context.grid[row + y as usize][col + 1 + (x + i) as usize];
-        }
+fn query(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let x_port = context.listen("x", row, col - 3, '0');
+    let y_port = context.listen("y", row, col - 2, '0');
+    let len_port = context.listen("len", row, col - 1, '1');
+
+    let (x, _) = char_to_base_36(x_port.value);
+    let (y, _) = char_to_base_36(y_port.value);
+    let (len, _) = char_to_base_36(len_port.value);
+    let len = len.max(1);
+    let mut input_ports: Vec<Port> = (0..len).map(|i| context.listen(
+        &format!("in-{}", i), row + y as i32, col + 1 + x as i32 + i as i32, '.',
+    )).collect();
+    let output_ports = input_ports.iter().enumerate().map(|(i, port)| Port::new(
+        &format!("out-{}", i), row + 1, col + 1 + i as i32 - len as i32, port.value,
+    )).collect();
+
+    input_ports.extend(vec![x_port, y_port]);
+    OperatorResult {
+        input_ports,
+        output_ports,
+        midi_notes: vec![],
     }
 }
 
-pub fn generate(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((x, _)), Some((y, _)), Some((len, _))) = (
-        char_to_base_36(grid[row][col - 3]),
-        char_to_base_36(grid[row][col - 2]),
-        char_to_base_36(grid[row][col - 1])
-    ) {
-        for i in 0..len {
-            context.grid[row + 1 + y as usize][col + (x + i) as usize] = context.grid[row][col + 1 + i as usize];
-        }
+fn generate(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let x_port = context.listen("x", row, col - 3, '0');
+    let y_port = context.listen("y", row, col - 2, '0');
+    let len_port = context.listen("len", row, col - 1, '1');
+
+    let (x, _) = char_to_base_36(x_port.value);
+    let (y, _) = char_to_base_36(y_port.value);
+    let (len, _) = char_to_base_36(len_port.value);
+    let len = len.max(1);
+    let mut input_ports: Vec<Port> = (0..len).map(|i| context.listen(
+        &format!("in-{}", i), row, col + 1 + i as i32, '.',
+    )).collect();
+    let output_ports = input_ports.iter().enumerate().map(|(i, port)| Port::new(
+        &format!("out-{}", i), row + 1 + y as i32, col + i as i32 + x as i32, port.value,
+    )).collect();
+
+    input_ports.extend(vec![x_port, y_port]);
+    OperatorResult {
+        input_ports,
+        output_ports,
+        midi_notes: vec![],
     }
 }
 
-pub fn write(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((x, _)), Some((y, _))) = (
-        char_to_base_36(grid[row][col - 2]),
-        char_to_base_36(grid[row][col - 1])
-    ) {
-        context.grid[row + 1 + y as usize][col + x as usize] = context.grid[row][col + 1];
+fn write(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let x_port = context.listen("x", row, col - 2, '0');
+    let y_port = context.listen("y", row, col - 1, '0');
+
+    let (x, _) = char_to_base_36(x_port.value);
+    let (y, _) = char_to_base_36(y_port.value);
+    let val_port = context.listen("val", row, col + 1, '.');
+    let out = val_port.value;
+
+    let out_port = Port::new("out", row + 1 + y as i32, col + x as i32, out);
+
+    OperatorResult {
+        input_ports: vec![x_port, y_port, val_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn interpolate(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((rate, _)), Some((target, target_upper))) = (
-        char_to_base_36(grid[row][col - 1]),
-        char_to_base_36(grid[row][col + 1])
-    ) {
-        let value = if let Some((value, _)) = char_to_base_36(grid[row + 1][col]) {
-            (value + rate).min(target)
-        } else {
-            0
-        };
-        context.grid[row + 1][col] = base_36_to_char(value, target_upper);
+fn interpolate(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let rate_port = context.listen("rate", row, col - 1, '1');
+    let target_port = context.listen("target", row, col + 1, 'z');
+
+    let (rate, _) = char_to_base_36(rate_port.value);
+    let (target, target_upper) = char_to_base_36(target_port.value);
+    let mut out_port = context.listen("out", row + 1, col, '0');
+    let (out, _) = char_to_base_36(out_port.value);
+    let out = (out + rate).min(target);
+    out_port.value = base_36_to_char(out, target_upper);
+
+    OperatorResult {
+        input_ports: vec![rate_port, target_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn euclid(context: &mut Context, row: usize, col: usize) {
-    let grid = &context.grid;
-    if let (Some((step, _)), Some((max, _))) = (
-        char_to_base_36(grid[row][col - 1]),
-        char_to_base_36(grid[row][col + 1])
-    ) {
-        if (step as usize * (context.ticks + max as usize - 1) % max as usize) as u8 + step >= max {
-            context.grid[row + 1][col] = '*';
-        }
+fn euclid(context: &Context, row: i32, col: i32) -> OperatorResult {
+    let step_port = context.listen("step", row, col - 1, '1');
+    let max_port = context.listen("max", row, col + 1, '8');
+
+    let (step, _) = char_to_base_36(step_port.value);
+    let (max, _) = char_to_base_36(max_port.value);
+    let max = max.max(1);
+
+    let mut out_port = context.listen("out", row + 1, col, '.');
+    if (step as usize * (context.ticks + max as usize - 1) % max as usize) as u8 + step >= max {
+        out_port.value = '*';
+    }
+
+    OperatorResult {
+        input_ports: vec![step_port, max_port],
+        output_ports: vec![out_port],
+        midi_notes: vec![],
     }
 }
 
-pub fn get_tick_operators() -> HashMap<char, fn(&mut Context, usize, usize)> {
-    let mut operators: HashMap<char, fn(&mut Context, usize, usize)> = HashMap::new();
-    operators.insert('A', add);
-    operators.insert('B', sub);
-    operators.insert('C', clock);
-    operators.insert('D', delay);
-    operators.insert('E', east);
-    operators.insert('F', condition);
-    operators.insert('G', generate);
-    // operators.insert('H', halt);
-    operators.insert('I', increment);
-    operators.insert('J', jump);
-    // operators.insert('K', concat);
-    operators.insert('L', lesser);
-    operators.insert('M', multiply);
-    operators.insert('N', north);
-    operators.insert('O', read);
-    operators.insert('P', push);
-    operators.insert('Q', query);
-    operators.insert('R', random);
-    operators.insert('S', south);
-    operators.insert('T', track);
-    operators.insert('U', euclid);
-    // operators.insert('V', variable);
-    operators.insert('W', west);
-    operators.insert('X', write);
-    operators.insert('Y', jymp);
-    operators.insert('Z', interpolate);
-    operators
-}
-
-pub fn get_bang_operators() -> HashMap<char, fn(&mut Context, usize, usize)> {
-    let mut operators: HashMap<char, fn(&mut Context, usize, usize)> = HashMap::new();
+pub fn get_bang_operators() -> HashMap<char, Operator> {
+    let mut operators: HashMap<char, Operator> = HashMap::new();
     for (c, operator) in get_tick_operators() {
         operators.insert(c.to_ascii_lowercase(), operator);
     }
-    operators.insert(':', midi_note);
+    operators.insert(':', Operator::new("Midi", ':', midi_note));
     operators
 }
 
 pub fn grid_tick(
     context: &mut Context,
-    tick_operators: &HashMap<char, fn(&mut Context, usize, usize)>,
-    bang_operators: &HashMap<char, fn(&mut Context, usize, usize)>,
+    tick_operators: &HashMap<char, Operator>,
+    bang_operators: &HashMap<char, Operator>,
 ) {
     let rows = context.grid.len();
     let cols = context.grid[0].len();
@@ -339,7 +521,7 @@ pub fn grid_tick(
     for row in 0..rows {
         for col in 0..cols {
             if let Some(operator) = tick_operators.get(&context.grid[row][col]) {
-                operator(context, row, col);
+                operator.apply(context, row as i32, col as i32);
             }
         }
     }
@@ -351,7 +533,7 @@ pub fn grid_tick(
                 if context.grid[row - 1][col] == '*'
                     || context.grid[row][col - 1] == '*'
                     || context.grid[row + 1][col] == '*' {
-                    operator(context, row, col);
+                    operator.apply(context, row as i32, col as i32);
                 }
             }
         }
