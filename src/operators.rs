@@ -215,6 +215,8 @@ fn clock(context: &Context, row: i32, col: i32) -> Vec<Update> {
 
     let (rate, _) = char_to_base_36(rate_port.value);
     let (clock_mod, mod_upper) = char_to_base_36(mod_port.value);
+    let rate = rate.max(1);
+    let clock_mod = clock_mod.max(1);
     let out = context.ticks / rate as usize % clock_mod as usize;
     let out = base_36_to_char(out as u8, mod_upper);
 
