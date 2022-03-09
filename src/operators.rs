@@ -30,32 +30,51 @@ pub fn base_36_to_char(c: u8, upper: bool) -> char {
     c as char
 }
 
-struct OperatorResult {
-    input_ports: Vec<Port>,
-    output_ports: Vec<Port>,
-    midi_notes: Vec<MidiNote>,
+enum Update {
+    Inputs(Vec<Port>),
+    Outputs(Vec<Port>),
+    Locks(Vec<Port>),
+    Notes(Vec<MidiNote>),
 }
 
 #[derive(Clone)]
 pub struct Operator {
     name: String,
     symbol: char,
-    evaluate: fn(context: &Context, row: i32, col: i32) -> OperatorResult,
+    evaluate: fn(context: &Context, row: i32, col: i32) -> Vec<Update>,
 }
 
 
 impl Operator {
-    fn new(name: &str, symbol: char, evaluate: fn(&Context, i32, i32) -> OperatorResult) -> Operator {
+    fn new(name: &str, symbol: char, evaluate: fn(&Context, i32, i32) -> Vec<Update>) -> Operator {
         Operator { name: String::from(name), symbol, evaluate }
     }
 
     fn apply(&self, context: &mut Context, row: i32, col: i32) {
-        let update = (self.evaluate)(context, row, col);
-        for port in update.output_ports {
-            context.write(port.row, port.col, port.value);
-        }
-        for note in update.midi_notes {
-            context.write_note(note);
+        if !context.is_locked(row, col) {
+            let updates = (self.evaluate)(context, row, col);
+            for update in updates {
+                match update {
+                    Update::Inputs(ports) => {
+                        println!("input ports for {}: {:?}", self.name, ports);
+                    }
+                    Update::Outputs(ports) => {
+                        for port in ports {
+                            context.write(port.row, port.col, port.value);
+                        }
+                    }
+                    Update::Locks(ports) => {
+                        for port in ports {
+                            context.lock(port.row, port.col);
+                        }
+                    }
+                    Update::Notes(notes) => {
+                        for note in notes {
+                            context.write_note(note);
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -66,32 +85,32 @@ pub fn get_tick_operators() -> HashMap<char, Operator> {
         Operator::new("Sub", 'B', sub),
         Operator::new("Clock", 'C', clock),
         Operator::new("Delay", 'D', delay),
-        // Operator::new("East", 'E', east),
+        Operator::new("East", 'E', east),
         Operator::new("If", 'F', condition),
         Operator::new("Generate", 'G', generate),
-        // Operator::new("Halt", 'H', halt),
+        Operator::new("Halt", 'H', halt),
         Operator::new("Increment", 'I', increment),
         Operator::new("Jump", 'J', jump),
         // Operator::new("Concat", 'K', concat),
         Operator::new("Lesser", 'L', lesser),
         Operator::new("Multiply", 'M', multiply),
-        // Operator::new("North", 'N', north),
+        Operator::new("North", 'N', north),
         Operator::new("Read", 'O', read),
         Operator::new("Push", 'P', push),
         Operator::new("Query", 'Q', query),
         Operator::new("Random", 'R', random),
-        // Operator::new("South", 'S', south),
+        Operator::new("South", 'S', south),
         Operator::new("Track", 'T', track),
         Operator::new("Euclid", 'U', euclid),
         // Operator::new("Variable", 'V', variable),
-        // Operator::new("West", 'W', west),
+        Operator::new("West", 'W', west),
         Operator::new("Write", 'X', write),
         Operator::new("Jymp", 'Y', jymp),
         Operator::new("Interpolate", 'Z', interpolate),
     ].iter().cloned().map(|operator| (operator.symbol, operator)).collect()
 }
 
-fn add(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn add(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let a_port = context.listen("a", row, col - 1, '0');
     let b_port = context.listen("b", row, col + 1, '0');
 
@@ -101,14 +120,13 @@ fn add(context: &Context, row: i32, col: i32) -> OperatorResult {
 
     let out_port = Port::new("out", row + 1, col, out);
 
-    OperatorResult {
-        input_ports: vec![a_port, b_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![a_port, b_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn sub(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn sub(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let a_port = context.listen("a", row, col - 1, '0');
     let b_port = context.listen("b", row, col + 1, '0');
 
@@ -119,14 +137,13 @@ fn sub(context: &Context, row: i32, col: i32) -> OperatorResult {
 
     let out_port = Port::new("out", row + 1, col, out);
 
-    OperatorResult {
-        input_ports: vec![a_port, b_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![a_port, b_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn delay(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn delay(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let rate_port = context.listen("rate", row, col - 1, '1');
     let mod_port = context.listen("mod", row, col + 1, '8');
 
@@ -139,14 +156,13 @@ fn delay(context: &Context, row: i32, col: i32) -> OperatorResult {
         out_port.value = '*';
     }
 
-    OperatorResult {
-        input_ports: vec![rate_port, mod_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![rate_port, mod_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn random(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn random(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let min_port = context.listen("min", row, col - 1, '0');
     let max_port = context.listen("max", row, col + 1, 'z');
 
@@ -159,14 +175,13 @@ fn random(context: &Context, row: i32, col: i32) -> OperatorResult {
 
     let out_port = Port::new("out", row + 1, col, out);
 
-    OperatorResult {
-        input_ports: vec![min_port, max_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![min_port, max_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn midi_note(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn midi_note(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let channel_port = context.listen("channel", row, col + 1, '0');
     let octave_port = context.listen("octave", row, col + 2, '0');
     let note_port = context.listen("note", row, col + 3, '0');
@@ -188,14 +203,13 @@ fn midi_note(context: &Context, row: i32, col: i32) -> OperatorResult {
         vec![]
     };
 
-    OperatorResult {
-        input_ports: vec![channel_port, octave_port, note_port, velocity_port, duration_port],
-        output_ports: vec![],
-        midi_notes,
-    }
+    vec![
+        Update::Inputs(vec![channel_port, octave_port, note_port, velocity_port, duration_port]),
+        Update::Notes(midi_notes),
+    ]
 }
 
-fn clock(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn clock(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let rate_port = context.listen("rate", row, col - 1, '1');
     let mod_port = context.listen("mod", row, col + 1, '8');
 
@@ -206,14 +220,13 @@ fn clock(context: &Context, row: i32, col: i32) -> OperatorResult {
 
     let out_port = Port::new("out", row + 1, col, out);
 
-    OperatorResult {
-        input_ports: vec![rate_port, mod_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![rate_port, mod_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn track(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn track(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let key_port = context.listen("key", row, col - 2, '0');
     let len_port = context.listen("len", row, col - 1, '1');
 
@@ -225,34 +238,94 @@ fn track(context: &Context, row: i32, col: i32) -> OperatorResult {
 
     let out_port = Port::new("out", row + 1, col, out);
 
-    OperatorResult {
-        input_ports: vec![key_port, len_port, val_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
+    vec![
+        Update::Inputs(vec![key_port, len_port, val_port]),
+        Update::Outputs(vec![out_port]),
+    ]
+}
+
+fn halt(context: &Context, row: i32, col: i32) -> Vec<Update> {
+    let output_port = context.listen("out", row + 1, col, '.');
+    vec![
+        Update::Inputs(vec![output_port.clone()]),
+        Update::Outputs(vec![output_port.clone()]),
+        Update::Locks(vec![output_port]),
+    ]
+}
+
+fn east(context: &Context, row: i32, col: i32) -> Vec<Update> {
+    let mut input_port = context.listen("", row, col, '.');
+    let mut output_port = context.listen("", row, col + 1, '.');
+    if output_port.value == '.' {
+        output_port.value = input_port.value;
+        input_port.value = '.';
+        vec![
+            Update::Outputs(vec![input_port, output_port.clone()]),
+            Update::Locks(vec![output_port])
+        ]
+    } else {
+        input_port.value = '*';
+        vec![
+            Update::Outputs(vec![input_port])
+        ]
     }
 }
 
-// pub fn east(context: &mut Context, row: usize, col: usize) {
-//     context.grid[row][col + 1] = context.grid[row][col];
-//     context.grid[row][col] = '.';
-// }
-//
-// pub fn west(context: &mut Context, row: usize, col: usize) {
-//     context.grid[row][col - 1] = context.grid[row][col];
-//     context.grid[row][col] = '.';
-// }
-//
-// pub fn north(context: &mut Context, row: usize, col: usize) {
-//     context.grid[row - 1][col] = context.grid[row][col];
-//     context.grid[row][col] = '.';
-// }
-//
-// pub fn south(context: &mut Context, row: usize, col: usize) {
-//     context.grid[row + 1][col] = context.grid[row][col];
-//     context.grid[row][col] = '.';
-// }
+fn west(context: &Context, row: i32, col: i32) -> Vec<Update> {
+    let mut input_port = context.listen("", row, col, '.');
+    let mut output_port = context.listen("", row, col - 1, '.');
+    if output_port.value == '.' {
+        output_port.value = input_port.value;
+        input_port.value = '.';
+        vec![
+            Update::Outputs(vec![input_port, output_port.clone()]),
+            Update::Locks(vec![output_port])
+        ]
+    } else {
+        input_port.value = '*';
+        vec![
+            Update::Outputs(vec![input_port])
+        ]
+    }
+}
 
-fn condition(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn north(context: &Context, row: i32, col: i32) -> Vec<Update> {
+    let mut input_port = context.listen("", row, col, '.');
+    let mut output_port = context.listen("", row - 1, col, '.');
+    if output_port.value == '.' {
+        output_port.value = input_port.value;
+        input_port.value = '.';
+        vec![
+            Update::Outputs(vec![input_port, output_port.clone()]),
+            Update::Locks(vec![output_port])
+        ]
+    } else {
+        input_port.value = '*';
+        vec![
+            Update::Outputs(vec![input_port])
+        ]
+    }
+}
+
+fn south(context: &Context, row: i32, col: i32) -> Vec<Update> {
+    let mut input_port = context.listen("", row, col, '.');
+    let mut output_port = context.listen("", row + 1, col, '.');
+    if output_port.value == '.' {
+        output_port.value = input_port.value;
+        input_port.value = '.';
+        vec![
+            Update::Outputs(vec![input_port, output_port.clone()]),
+            Update::Locks(vec![output_port])
+        ]
+    } else {
+        input_port.value = '*';
+        vec![
+            Update::Outputs(vec![input_port])
+        ]
+    }
+}
+
+fn condition(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let a_port = context.listen("a", row, col - 1, '.');
     let b_port = context.listen("b", row, col + 1, '.');
 
@@ -263,14 +336,13 @@ fn condition(context: &Context, row: i32, col: i32) -> OperatorResult {
         out_port.value = '*';
     }
 
-    OperatorResult {
-        input_ports: vec![a_port, b_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![a_port, b_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn increment(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn increment(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let step_port = context.listen("step", row, col - 1, '1');
     let mod_port = context.listen("mod", row, col + 1, 'z');
 
@@ -282,36 +354,33 @@ fn increment(context: &Context, row: i32, col: i32) -> OperatorResult {
     let out = (out + step) % increment_mod;
     out_port.value = base_36_to_char(out, mod_upper);
 
-    OperatorResult {
-        input_ports: vec![step_port, mod_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![step_port, mod_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn jump(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn jump(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let input_port = context.listen("input", row - 1, col, '.');
     let output_port = Port::new("output", row + 1, col, input_port.value);
 
-    OperatorResult {
-        input_ports: vec![input_port],
-        output_ports: vec![output_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![input_port]),
+        Update::Outputs(vec![output_port]),
+    ]
 }
 
-fn jymp(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn jymp(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let input_port = context.listen("input", row, col - 1, '.');
     let output_port = Port::new("output", row, col + 1, input_port.value);
 
-    OperatorResult {
-        input_ports: vec![input_port],
-        output_ports: vec![output_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![input_port]),
+        Update::Outputs(vec![output_port]),
+    ]
 }
 
-fn lesser(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn lesser(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let a_port = context.listen("a", row, col - 1, '.');
     let b_port = context.listen("b", row, col + 1, '.');
 
@@ -326,14 +395,13 @@ fn lesser(context: &Context, row: i32, col: i32) -> OperatorResult {
 
     let out_port = Port::new("out", row + 1, col, out);
 
-    OperatorResult {
-        input_ports: vec![a_port, b_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![a_port, b_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn multiply(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn multiply(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let a_port = context.listen("a", row, col - 1, '0');
     let b_port = context.listen("b", row, col + 1, '0');
 
@@ -343,14 +411,13 @@ fn multiply(context: &Context, row: i32, col: i32) -> OperatorResult {
 
     let out_port = Port::new("out", row + 1, col, out);
 
-    OperatorResult {
-        input_ports: vec![a_port, b_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![a_port, b_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn read(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn read(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let x_port = context.listen("x", row, col - 2, '0');
     let y_port = context.listen("y", row, col - 1, '0');
 
@@ -361,14 +428,13 @@ fn read(context: &Context, row: i32, col: i32) -> OperatorResult {
 
     let out_port = Port::new("out", row + 1, col, out);
 
-    OperatorResult {
-        input_ports: vec![x_port, y_port, val_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![x_port, y_port, val_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn push(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn push(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let key_port = context.listen("key", row, col - 2, '0');
     let len_port = context.listen("len", row, col - 1, '1');
 
@@ -380,14 +446,13 @@ fn push(context: &Context, row: i32, col: i32) -> OperatorResult {
 
     let out_port = Port::new("out", row + 1, col + (key % len) as i32, out);
 
-    OperatorResult {
-        input_ports: vec![key_port, len_port, val_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![key_port, len_port, val_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn query(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn query(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let x_port = context.listen("x", row, col - 3, '0');
     let y_port = context.listen("y", row, col - 2, '0');
     let len_port = context.listen("len", row, col - 1, '1');
@@ -404,14 +469,13 @@ fn query(context: &Context, row: i32, col: i32) -> OperatorResult {
     )).collect();
 
     input_ports.extend(vec![x_port, y_port]);
-    OperatorResult {
-        input_ports,
-        output_ports,
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(input_ports),
+        Update::Outputs(output_ports),
+    ]
 }
 
-fn generate(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn generate(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let x_port = context.listen("x", row, col - 3, '0');
     let y_port = context.listen("y", row, col - 2, '0');
     let len_port = context.listen("len", row, col - 1, '1');
@@ -428,14 +492,13 @@ fn generate(context: &Context, row: i32, col: i32) -> OperatorResult {
     )).collect();
 
     input_ports.extend(vec![x_port, y_port]);
-    OperatorResult {
-        input_ports,
-        output_ports,
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(input_ports),
+        Update::Outputs(output_ports),
+    ]
 }
 
-fn write(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn write(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let x_port = context.listen("x", row, col - 2, '0');
     let y_port = context.listen("y", row, col - 1, '0');
 
@@ -446,14 +509,13 @@ fn write(context: &Context, row: i32, col: i32) -> OperatorResult {
 
     let out_port = Port::new("out", row + 1 + y as i32, col + x as i32, out);
 
-    OperatorResult {
-        input_ports: vec![x_port, y_port, val_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![x_port, y_port, val_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn interpolate(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn interpolate(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let rate_port = context.listen("rate", row, col - 1, '1');
     let target_port = context.listen("target", row, col + 1, 'z');
 
@@ -464,14 +526,13 @@ fn interpolate(context: &Context, row: i32, col: i32) -> OperatorResult {
     let out = (out + rate).min(target);
     out_port.value = base_36_to_char(out, target_upper);
 
-    OperatorResult {
-        input_ports: vec![rate_port, target_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![rate_port, target_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
-fn euclid(context: &Context, row: i32, col: i32) -> OperatorResult {
+fn euclid(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let step_port = context.listen("step", row, col - 1, '1');
     let max_port = context.listen("max", row, col + 1, '8');
 
@@ -484,11 +545,10 @@ fn euclid(context: &Context, row: i32, col: i32) -> OperatorResult {
         out_port.value = '*';
     }
 
-    OperatorResult {
-        input_ports: vec![step_port, max_port],
-        output_ports: vec![out_port],
-        midi_notes: vec![],
-    }
+    vec![
+        Update::Inputs(vec![step_port, max_port]),
+        Update::Outputs(vec![out_port]),
+    ]
 }
 
 pub fn get_bang_operators() -> HashMap<char, Operator> {
@@ -507,6 +567,7 @@ pub fn grid_tick(
 ) {
     let rows = context.grid.len();
     let cols = context.grid[0].len();
+    context.unlock_all();
 
     // clear previous bangs
     for row in 0..rows {
