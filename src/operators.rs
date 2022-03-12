@@ -162,6 +162,7 @@ fn delay(context: &Context, row: i32, col: i32) -> Vec<Update> {
 
     let (rate, _) = char_to_base_36(rate_port.value);
     let (delay_mod, _) = char_to_base_36(mod_port.value);
+    let rate = rate.max(1);
     let delay_mod = delay_mod.max(1);
 
     let mut out_port = context.listen("out", row + 1, col, '.');
@@ -181,6 +182,7 @@ fn random(context: &Context, row: i32, col: i32) -> Vec<Update> {
 
     let (min, min_upper) = char_to_base_36(min_port.value);
     let (max, max_upper) = char_to_base_36(max_port.value);
+    let max = max.max(min + 1); // wow this looks like trash
 
     let mut rng = rand::thread_rng();
     let r = rng.gen_range(min..max);
@@ -430,7 +432,7 @@ fn multiply(context: &Context, row: i32, col: i32) -> Vec<Update> {
 
     let (a, a_upper) = char_to_base_36(a_port.value);
     let (b, b_upper) = char_to_base_36(b_port.value);
-    let out = base_36_to_char(a * b, a_upper || b_upper);
+    let out = base_36_to_char(a.saturating_mul(b), a_upper || b_upper);
 
     let out_port = Port::new("out", row + 1, col, out);
 
