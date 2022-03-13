@@ -67,13 +67,13 @@ impl Context {
         if 0 <= row && row < self.height && 0 <= col && col < self.width {
             self.grid[row][col]
         } else {
-            '.'
+            '\0'
         }
     }
 
     pub fn listen(&self, name: &str, row: i32, col: i32, default: char) -> Port {
         let value = self.read(row, col);
-        let value = if value == '.' { default } else { value };
+        let value = if value == '\0' { default } else { value };
         Port::new(name, row, col, value)
     }
 
@@ -94,7 +94,7 @@ impl Context {
     }
 
     pub fn read_variable(&self, name: char) -> char {
-        *self.variables.get(&name).unwrap_or(&'.')
+        *self.variables.get(&name).unwrap_or(&'\0')
     }
 
     pub fn clear_all_variables(&mut self) {

@@ -15,7 +15,9 @@ use crate::operators::{get_bang_operators, get_tick_operators, grid_tick};
 fn main() {
     let rows = 30;
     let cols = 100;
-    let grid: Vec<Vec<char>> = (0..rows).map(|_| (0..cols).map(|_| '.').collect()).collect();
+    let grid_row_spacing = 9;
+    let grid_col_spacing = 9;
+    let grid: Vec<Vec<char>> = (0..rows).map(|_| (0..cols).map(|_| '\0').collect()).collect();
     let context = Context::new(grid, 120, 4);
 
     let context_arc = Arc::new(Mutex::new(context));
@@ -67,7 +69,7 @@ fn main() {
     });
 
 
-    let (mut row, mut col): (usize, usize) = (0, 0);
+    let (mut cursor_row, mut cursor_col): (usize, usize) = (0, 0);
 
     let mut window = initscr();
     resize_term(rows, cols);
@@ -87,41 +89,48 @@ fn main() {
             _context.grid.clone()
         };
         window.mv(0, 0);
-        for row in grid.iter() {
-            for value in row.iter() {
-                window.addch(*value);
+        for (r, row) in grid.iter().enumerate() {
+            for (c, &value) in row.iter().enumerate() {
+                let display_value = if value != '\0' {
+                    value
+                } else if r % grid_row_spacing == 0 && c % grid_col_spacing == 0 {
+                    '+'
+                } else {
+                    ' '
+                };
+                window.addch(display_value);
             }
         }
-        window.mv(row as i32, col as i32);
+        window.mv(cursor_row as i32, cursor_col as i32);
 
         match window.getch() {
             Some(input) => {
                 match input {
-                    Input::KeyUp => { row -= 1; }
-                    Input::KeyDown => { row += 1; }
-                    Input::KeyLeft => { col -= 1; }
-                    Input::KeyRight => { col += 1; }
+                    Input::KeyUp => { cursor_row -= 1; }
+                    Input::KeyDown => { cursor_row += 1; }
+                    Input::KeyLeft => { cursor_col -= 1; }
+                    Input::KeyRight => { cursor_col += 1; }
                     Input::KeyBackspace => {
                         let mut _context = context_arc.lock().unwrap();
-                        _context.grid[row][col] = '.';
+                        _context.grid[cursor_row][cursor_col] = '\0';
                     }
                     Input::KeyDC => {
                         let mut _context = context_arc.lock().unwrap();
-                        _context.grid[row][col] = '.';
+                        _context.grid[cursor_row][cursor_col] = '\0';
                     }
                     Input::KeyMouse => {
                         if let Ok(mouse_event) = getmouse() {
-                            row = mouse_event.y as usize;
-                            col = mouse_event.x as usize;
+                            cursor_row = mouse_event.y as usize;
+                            cursor_col = mouse_event.x as usize;
                         }
                     }
                     Input::Character(mut c) => {
                         if c == '\x08' {
-                            c = '.';
+                            c = '\0';
                         }
                         window.addch(c);
                         let mut _context = context_arc.lock().unwrap();
-                        _context.grid[row][col] = c;
+                        _context.grid[cursor_row][cursor_col] = c;
                     }
                     input => { println!("unexpected input: {:?}", input); }
                 }

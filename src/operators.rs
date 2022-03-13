@@ -165,7 +165,7 @@ fn delay(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let rate = rate.max(1);
     let delay_mod = delay_mod.max(1);
 
-    let mut out_port = context.listen("out", row + 1, col, '.');
+    let mut out_port = context.listen("out", row + 1, col, '\0');
     if context.ticks % (rate as usize * delay_mod as usize) == 0 {
         out_port.value = '*';
     }
@@ -254,12 +254,12 @@ fn track(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let (key, _) = char_to_base_36(key_port.value);
     let (len, _) = char_to_base_36(len_port.value);
     let len = len.max(1);
-    let val_port = context.listen("val", row, col + 1 + (key % len) as i32, '.');
+    let val_port = context.listen("val", row, col + 1 + (key % len) as i32, '\0');
     let out = val_port.value;
 
     let out_port = Port::new("out", row + 1, col, out);
     let locks = (0..(len as i32)).map(
-        |i| Port::new("locked", row, col + 1 + i, '.')
+        |i| Port::new("locked", row, col + 1 + i, '\0')
     ).collect();
 
     vec![
@@ -270,7 +270,7 @@ fn track(context: &Context, row: i32, col: i32) -> Vec<Update> {
 }
 
 fn halt(context: &Context, row: i32, col: i32) -> Vec<Update> {
-    let output_port = context.listen("out", row + 1, col, '.');
+    let output_port = context.listen("out", row + 1, col, '\0');
     vec![
         Update::Inputs(vec![output_port.clone()]),
         Update::Outputs(vec![output_port.clone()]),
@@ -279,11 +279,11 @@ fn halt(context: &Context, row: i32, col: i32) -> Vec<Update> {
 }
 
 fn east(context: &Context, row: i32, col: i32) -> Vec<Update> {
-    let mut input_port = context.listen("", row, col, '.');
-    let mut output_port = context.listen("", row, col + 1, '.');
-    if output_port.value == '.' {
+    let mut input_port = context.listen("", row, col, '\0');
+    let mut output_port = context.listen("", row, col + 1, '\0');
+    if output_port.value == '\0' {
         output_port.value = input_port.value;
-        input_port.value = '.';
+        input_port.value = '\0';
         vec![
             Update::Outputs(vec![input_port, output_port.clone()]),
             Update::Locks(vec![output_port]),
@@ -297,11 +297,11 @@ fn east(context: &Context, row: i32, col: i32) -> Vec<Update> {
 }
 
 fn west(context: &Context, row: i32, col: i32) -> Vec<Update> {
-    let mut input_port = context.listen("", row, col, '.');
-    let mut output_port = context.listen("", row, col - 1, '.');
-    if output_port.value == '.' {
+    let mut input_port = context.listen("", row, col, '\0');
+    let mut output_port = context.listen("", row, col - 1, '\0');
+    if output_port.value == '\0' {
         output_port.value = input_port.value;
-        input_port.value = '.';
+        input_port.value = '\0';
         vec![
             Update::Outputs(vec![input_port, output_port.clone()]),
             Update::Locks(vec![output_port]),
@@ -315,11 +315,11 @@ fn west(context: &Context, row: i32, col: i32) -> Vec<Update> {
 }
 
 fn north(context: &Context, row: i32, col: i32) -> Vec<Update> {
-    let mut input_port = context.listen("", row, col, '.');
-    let mut output_port = context.listen("", row - 1, col, '.');
-    if output_port.value == '.' {
+    let mut input_port = context.listen("", row, col, '\0');
+    let mut output_port = context.listen("", row - 1, col, '\0');
+    if output_port.value == '\0' {
         output_port.value = input_port.value;
-        input_port.value = '.';
+        input_port.value = '\0';
         vec![
             Update::Outputs(vec![input_port, output_port.clone()]),
             Update::Locks(vec![output_port]),
@@ -333,11 +333,11 @@ fn north(context: &Context, row: i32, col: i32) -> Vec<Update> {
 }
 
 fn south(context: &Context, row: i32, col: i32) -> Vec<Update> {
-    let mut input_port = context.listen("", row, col, '.');
-    let mut output_port = context.listen("", row + 1, col, '.');
-    if output_port.value == '.' {
+    let mut input_port = context.listen("", row, col, '\0');
+    let mut output_port = context.listen("", row + 1, col, '\0');
+    if output_port.value == '\0' {
         output_port.value = input_port.value;
-        input_port.value = '.';
+        input_port.value = '\0';
         vec![
             Update::Outputs(vec![input_port, output_port.clone()]),
             Update::Locks(vec![output_port]),
@@ -351,12 +351,12 @@ fn south(context: &Context, row: i32, col: i32) -> Vec<Update> {
 }
 
 fn condition(context: &Context, row: i32, col: i32) -> Vec<Update> {
-    let a_port = context.listen("a", row, col - 1, '.');
-    let b_port = context.listen("b", row, col + 1, '.');
+    let a_port = context.listen("a", row, col - 1, '\0');
+    let b_port = context.listen("b", row, col + 1, '\0');
 
     let (a, _) = char_to_base_36(a_port.value);
     let (b, _) = char_to_base_36(b_port.value);
-    let mut out_port = context.listen("out", row + 1, col, '.');
+    let mut out_port = context.listen("out", row + 1, col, '\0');
     if a == b {
         out_port.value = '*';
     }
@@ -386,7 +386,7 @@ fn increment(context: &Context, row: i32, col: i32) -> Vec<Update> {
 }
 
 fn jump(context: &Context, row: i32, col: i32) -> Vec<Update> {
-    let input_port = context.listen("input", row - 1, col, '.');
+    let input_port = context.listen("input", row - 1, col, '\0');
     let output_port = Port::new("output", row + 1, col, input_port.value);
 
     vec![
@@ -396,7 +396,7 @@ fn jump(context: &Context, row: i32, col: i32) -> Vec<Update> {
 }
 
 fn jymp(context: &Context, row: i32, col: i32) -> Vec<Update> {
-    let input_port = context.listen("input", row, col - 1, '.');
+    let input_port = context.listen("input", row, col - 1, '\0');
     let output_port = Port::new("output", row, col + 1, input_port.value);
 
     vec![
@@ -406,16 +406,16 @@ fn jymp(context: &Context, row: i32, col: i32) -> Vec<Update> {
 }
 
 fn lesser(context: &Context, row: i32, col: i32) -> Vec<Update> {
-    let a_port = context.listen("a", row, col - 1, '.');
-    let b_port = context.listen("b", row, col + 1, '.');
+    let a_port = context.listen("a", row, col - 1, '\0');
+    let b_port = context.listen("b", row, col + 1, '\0');
 
-    let out = if a_port.value != '.' && b_port.value != '.' {
+    let out = if a_port.value != '\0' && b_port.value != '\0' {
         let (a, a_upper) = char_to_base_36(a_port.value);
         let (b, b_upper) = char_to_base_36(b_port.value);
         let less = if a < b { a } else { b };
         base_36_to_char(less, a_upper || b_upper)
     } else {
-        '.'
+        '\0'
     };
 
     let out_port = Port::new("out", row + 1, col, out);
@@ -448,7 +448,7 @@ fn read(context: &Context, row: i32, col: i32) -> Vec<Update> {
 
     let (x, _) = char_to_base_36(x_port.value);
     let (y, _) = char_to_base_36(y_port.value);
-    let val_port = context.listen("val", row + y as i32, col + 1 + x as i32, '.');
+    let val_port = context.listen("val", row + y as i32, col + 1 + x as i32, '\0');
     let out = val_port.value;
 
     let out_port = Port::new("out", row + 1, col, out);
@@ -466,12 +466,12 @@ fn push(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let (key, _) = char_to_base_36(key_port.value);
     let (len, _) = char_to_base_36(len_port.value);
     let len = len.max(1);
-    let val_port = context.listen("val", row, col + 1, '.');
+    let val_port = context.listen("val", row, col + 1, '\0');
     let out = val_port.value;
 
     let out_port = Port::new("out", row + 1, col + (key % len) as i32, out);
     let locks = (0..(len as i32)).map(
-        |i| Port::new("locked", row + 1, col + i, '.')
+        |i| Port::new("locked", row + 1, col + i, '\0')
     ).collect();
 
     vec![
@@ -491,7 +491,7 @@ fn query(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let (len, _) = char_to_base_36(len_port.value);
     let len = len.max(1);
     let mut input_ports: Vec<Port> = (0..len).map(|i| context.listen(
-        &format!("in-{}", i), row + y as i32, col + 1 + x as i32 + i as i32, '.',
+        &format!("in-{}", i), row + y as i32, col + 1 + x as i32 + i as i32, '\0',
     )).collect();
     let output_ports = input_ports.iter().enumerate().map(|(i, port)| Port::new(
         &format!("out-{}", i), row + 1, col + 1 + i as i32 - len as i32, port.value,
@@ -514,7 +514,7 @@ fn generate(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let (len, _) = char_to_base_36(len_port.value);
     let len = len.max(1);
     let mut input_ports: Vec<Port> = (0..len).map(|i| context.listen(
-        &format!("in-{}", i), row, col + 1 + i as i32, '.',
+        &format!("in-{}", i), row, col + 1 + i as i32, '\0',
     )).collect();
     let output_ports = input_ports.iter().enumerate().map(|(i, port)| Port::new(
         &format!("out-{}", i), row + 1 + y as i32, col + i as i32 + x as i32, port.value,
@@ -533,7 +533,7 @@ fn write(context: &Context, row: i32, col: i32) -> Vec<Update> {
 
     let (x, _) = char_to_base_36(x_port.value);
     let (y, _) = char_to_base_36(y_port.value);
-    let val_port = context.listen("val", row, col + 1, '.');
+    let val_port = context.listen("val", row, col + 1, '\0');
     let out = val_port.value;
 
     let out_port = Port::new("out", row + 1 + y as i32, col + x as i32, out);
@@ -569,7 +569,7 @@ fn euclid(context: &Context, row: i32, col: i32) -> Vec<Update> {
     let (max, _) = char_to_base_36(max_port.value);
     let max = max.max(1);
 
-    let mut out_port = context.listen("out", row + 1, col, '.');
+    let mut out_port = context.listen("out", row + 1, col, '\0');
     if (step as usize * (context.ticks + max as usize - 1) % max as usize) as u8 + step >= max {
         out_port.value = '*';
     }
@@ -589,17 +589,17 @@ fn comment(context: &Context, row: i32, col: i32) -> Vec<Update> {
             break;
         }
     }
-    let locks = (col..(c + 1)).map(|l| Port::new("locked", row, l, '.')).collect();
+    let locks = (col..(c + 1)).map(|l| Port::new("locked", row, l, '\0')).collect();
     vec![
         Update::Locks(locks)
     ]
 }
 
 fn variable(context: &Context, row: i32, col: i32) -> Vec<Update> {
-    let write_port = context.listen("write", row, col - 1, '.');
-    let read_port = context.listen("read", row, col + 1, '.');
+    let write_port = context.listen("write", row, col - 1, '\0');
+    let read_port = context.listen("read", row, col + 1, '\0');
 
-    if write_port.value == '.' {
+    if write_port.value == '\0' {
         let out_port = Port::new("out", row + 1, col, context.read_variable(read_port.value));
         vec![
             Update::Inputs(vec![write_port, read_port]),
@@ -623,7 +623,7 @@ fn concat(context: &Context, row: i32, col: i32) -> Vec<Update> {
                       context.read_variable(context.read(row, col + i + 1)))
     ).collect();
     let locks = (0..(len as i32)).map(
-        |i| Port::new("locked", row, col + 1 + i, '.')
+        |i| Port::new("locked", row, col + 1 + i, '\0')
     ).collect();
     vec![
         Update::Inputs(vec![len_port]),
@@ -654,7 +654,7 @@ pub fn grid_tick(
     for row in 0..rows {
         for col in 0..cols {
             if context.read(row, col) == '*' {
-                context.write(row, col, '.');
+                context.write(row, col, '\0');
             }
         }
     }
