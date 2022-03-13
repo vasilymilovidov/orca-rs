@@ -10,7 +10,7 @@ use midir::MidiOutput;
 use pancurses::{ALL_MOUSE_EVENTS, cbreak, curs_set, getmouse, initscr, Input, mousemask, noecho, resize_term};
 use crate::context::Context;
 use crate::midi::notes_tick;
-use crate::operators::{get_bang_operators, get_tick_operators, grid_tick};
+use crate::operators::{get_bang_operators, get_tick_operators, grid_tick, read_operator_config};
 
 fn main() {
     let rows = 30;
@@ -24,8 +24,9 @@ fn main() {
     let midi_context_arc = Arc::clone(&context_arc);
 
     thread::spawn(move || {
-        let tick_operators = operators::get_tick_operators();
-        let bang_operators = operators::get_bang_operators();
+        let operator_map = read_operator_config("operator_config.txt");
+        let tick_operators = operators::get_tick_operators(&operator_map);
+        let bang_operators = operators::get_bang_operators(&operator_map);
         let midi_out = MidiOutput::new("rust-orca").unwrap();
         let out_ports = midi_out.ports();
         let out_port = out_ports.get(2).unwrap();

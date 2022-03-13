@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::fs::{File, read_to_string};
 use std::hash::Hash;
+use std::path::Path;
 
 use rand::Rng;
 
@@ -42,14 +44,13 @@ enum Update {
 #[derive(Clone)]
 pub struct Operator {
     name: String,
-    symbol: char,
     evaluate: fn(context: &Context, row: i32, col: i32) -> Vec<Update>,
 }
 
 
 impl Operator {
-    fn new(name: &str, symbol: char, evaluate: fn(&Context, i32, i32) -> Vec<Update>) -> Operator {
-        Operator { name: String::from(name), symbol, evaluate }
+    fn new(name: &str, evaluate: fn(&Context, i32, i32) -> Vec<Update>) -> Operator {
+        Operator { name: String::from(name), evaluate }
     }
 
     fn apply(&self, context: &mut Context, row: i32, col: i32) {
@@ -89,38 +90,90 @@ impl Operator {
     }
 }
 
-pub fn get_tick_operators() -> HashMap<char, Operator> {
+pub fn read_operator_config(filename: &str) -> HashMap<String, char> {
+    let default_operator_config = "
+A Add
+B Sub
+C Clock
+D Delay
+E East
+F If
+G Generate
+H Halt
+I Increment
+J Jump
+K Concat
+L Lesser
+M Multiply
+N North
+O Read
+P Push
+Q Query
+R Random
+S South
+T Track
+U Euclid
+V Variable
+W West
+X Write
+Y Jymp
+Z Interpolate
+# Comment
+: Midi
+".trim().to_string();
+    read_to_string(filename)
+        .unwrap_or(default_operator_config)
+        .lines()
+        .filter_map(|line| line.split_once(' '))
+        .filter_map(|(symbol, name)| {
+            if let Some(symbol) = symbol.chars().next() {
+                Some((name.to_string(), symbol))
+            } else {
+                None
+            }
+        }).collect()
+}
+
+pub fn get_tick_operators(operator_map: &HashMap<String, char>) -> HashMap<char, Operator> {
     vec![
-        Operator::new("Add", 'A', add),
-        Operator::new("Sub", 'B', sub),
-        Operator::new("Clock", 'C', clock),
-        Operator::new("Delay", 'D', delay),
-        Operator::new("East", 'E', east),
-        Operator::new("If", 'F', condition),
-        Operator::new("Generate", 'G', generate),
-        Operator::new("Halt", 'H', halt),
-        Operator::new("Increment", 'I', increment),
-        Operator::new("Jump", 'J', jump),
-        Operator::new("Concat", 'K', concat),
-        Operator::new("Lesser", 'L', lesser),
-        Operator::new("Multiply", 'M', multiply),
-        Operator::new("North", 'N', north),
-        Operator::new("Read", 'O', read),
-        Operator::new("Push", 'P', push),
-        Operator::new("Query", 'Q', query),
-        Operator::new("Random", 'R', random),
-        Operator::new("South", 'S', south),
-        Operator::new("Track", 'T', track),
-        Operator::new("Euclid", 'U', euclid),
-        Operator::new("Variable", 'V', variable),
-        Operator::new("West", 'W', west),
-        Operator::new("Write", 'X', write),
-        Operator::new("Jymp", 'Y', jymp),
-        Operator::new("Interpolate", 'Z', interpolate),
-        Operator::new("Comment", '#', comment),
+        Operator::new("Add", add),
+        Operator::new("Sub", sub),
+        Operator::new("Clock", clock),
+        Operator::new("Delay", delay),
+        Operator::new("East", east),
+        Operator::new("If", condition),
+        Operator::new("Generate", generate),
+        Operator::new("Halt", halt),
+        Operator::new("Increment", increment),
+        Operator::new("Jump", jump),
+        Operator::new("Concat", concat),
+        Operator::new("Lesser", lesser),
+        Operator::new("Multiply", multiply),
+        Operator::new("North", north),
+        Operator::new("Read", read),
+        Operator::new("Push", push),
+        Operator::new("Query", query),
+        Operator::new("Random", random),
+        Operator::new("South", south),
+        Operator::new("Track", track),
+        Operator::new("Euclid", euclid),
+        Operator::new("Variable", variable),
+        Operator::new("West", west),
+        Operator::new("Write", write),
+        Operator::new("Jymp", jymp),
+        Operator::new("Interpolate", interpolate),
+        Operator::new("Comment", comment),
         // the midi operator is technically operated each tick, but only produces a note on a bang
-        Operator::new("Midi", ':', midi_note),
-    ].iter().cloned().map(|operator| (operator.symbol, operator)).collect()
+        Operator::new("Midi", midi_note),
+    ].iter().cloned().filter_map(
+        |operator| {
+            if let Some(&symbol) = operator_map.get(&operator.name) {
+                Some((symbol, operator))
+            } else {
+                None
+            }
+        }
+    ).collect()
 }
 
 fn add(context: &Context, row: i32, col: i32) -> Vec<Update> {
@@ -632,9 +685,9 @@ fn concat(context: &Context, row: i32, col: i32) -> Vec<Update> {
     ]
 }
 
-pub fn get_bang_operators() -> HashMap<char, Operator> {
+pub fn get_bang_operators(operator_map: &HashMap<String, char>) -> HashMap<char, Operator> {
     let mut operators: HashMap<char, Operator> = HashMap::new();
-    for (c, operator) in get_tick_operators() {
+    for (c, operator) in get_tick_operators(operator_map) {
         operators.insert(c.to_ascii_lowercase(), operator);
     }
     operators
