@@ -7,6 +7,8 @@ It has a new TUI made with ```ratatui```. Basic functionality such as copying/pa
 Additionally, there are a few non-standard features for Orca, such as global key and scale, operators for playing samples and synths, and a somewhat convoluted way of saving and loading sessions and snippets.
 The project started primarily as a way for me to learn Rust, so many parts of the code are in need of improved implementation and rewriting, but I'll get there. 
 
+![orca](https://github.com/vasilymilovidov/orca-rs/blob/main/Orca.png?raw=true)
+
 ### Building
 ```
 cargo build --release
