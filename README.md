@@ -18,19 +18,19 @@ Not properly tested on Linux and Windows, but it should build.
 ### Usage
 ```
 OPERATORS
-[A]dd: Outputs sum of inputs.               [B] subtract(a b): Outputs difference of inputs.
-[C]lock: Outputs modulo of frame.           [D]elay(rate mod): Bangs on modulo of frame.
-[E]ast: Moves eastward, or bangs.           [F] if(a b): Bangs if inputs are equal.
+[A]dd: Outputs sum of inputs.               [B] subtract: Outputs difference of inputs.
+[C]lock: Outputs modulo of frame.           [D]elay: Bangs on modulo of frame.
+[E]ast: Moves eastward, or bangs.           [F] if: Bangs if inputs are equal.
 [G]enerator: Writes operands with offset.   [H]alt: Halts southward operand.
-[I]ncrement: Increments southward operand.  [J]umper(val): Outputs northward operand.
-[K]onkat: Reads multiple variables.         [L]ess(a b): Outputs smallest of inputs.
+[I]ncrement: Increments southward operand.  [J]umper: Outputs northward operand.
+[K]onkat: Reads multiple variables.         [L]ess: Outputs smallest of inputs.
 [M]ultiply: Outputs product of inputs.      [N]orth: Moves Northward, or bangs.
-[O] read: Reads operand with offset.        [P]ush(len key val): Writes eastward operand.
-[Q]uery: Reads operands with offset.        [R]andom(min max): Outputs random value.
-[S]outh: Moves southward, or bangs.         [T]rack(key len val): Reads eastward operand.
-[U]clid: Bangs on Euclidean rhythm.         [V]ariable(write read): Reads and writes variable.
-[W]est: Moves westward, or bangs.           [X] write(x y val): Writes operand with offset.
-[Y] jymper: Outputs westward operand.       [Z] lerp(rate target): Transitions operand to input.
+[O] read: Reads operand with offset.        [P]ush: Writes eastward operand.
+[Q]uery: Reads operands with offset.        [R]andom: Outputs random value.
+[S]outh: Moves southward, or bangs.         [T]rack: Reads eastward operand.
+[U]clid: Bangs on Euclidean rhythm.         [V]ariable: Reads and writes variable.
+[W]est: Moves westward, or bangs.           [X] write: Writes operand with offset.
+[Y] jymper: Outputs westward operand.       [Z] lerp: Transitions operand to input.
 [*] bang: Bangs neighboring operands.       [#] comment: Halts a line.
 [:] MIDI: Sends a MIDI note.                [;] scaler: Sends degree of a scale as a MIDI note
 [>] sampler: Plays a sample                 [~] synth: Plays a built-in synth's note
