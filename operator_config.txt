@@ -1,4 +1,3 @@
-A Add
 B Sub
 C Clock
 D Delay
@@ -25,4 +24,15 @@ X Write
 Y Jymp
 Z Interpolate
 # Comment
+~ Synth
 : Midi
+? MidiCC
+; Scaler
+> Sampler
+^ Bernoulli
+± Turing
+@ Globals
+[ Saver
+] Loader
+{ SnipSave
+} SnipLoad

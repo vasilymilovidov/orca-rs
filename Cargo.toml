@@ -1,11 +1,24 @@
 [package]
-name = "rust-orca"
+name = "orca-rs"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-midir = "*"
-rand = "*"
-pancurses = "*"
+midir = "0.9.1"
+rand = "0.8.5"
+ratatui = { version = "0.23.1-alpha.2", features = ["all-widgets", "crossterm"] }
+cpal = "0.15.2"
+fundsp = "0.15.0"
+parking_lot = "0.12.1"
+crossbeam = "0.8.2"
+copypasta = "0.8.2"
+crossterm = "0.27.0"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
